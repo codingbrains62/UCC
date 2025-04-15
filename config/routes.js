@@ -22,7 +22,7 @@ module.exports.routes = {
   '/': { view: 'pages/homepage' },
   'POST /api/generate-xml': 'Xml.generate',
   // 'GET /api/get-xml/:id': 'Xml.getXml',
-  'GET /api/get-xml-by-fid/:fid': 'Xml.getXmlByFid',
+  'GET /api/get-xml/:fid': 'Xml.getXmlByFid',
 
 
 

@@ -1,12 +1,19 @@
+const validateUccData = require('../utils/validateUccData');
+
 module.exports = {
   generate: async function (req, res) {
     try {
       const data = req.body;
-
+       // Validate before XML generation
+       const errors = validateUccData(data);
+       if (errors.length) {
+         return res.badRequest({
+           message: 'Validation failed',
+           errors
+         });
+       }
       // ✅ Use helper
       const { xml, xmlBase64 } = await sails.helpers.xml.generateXml.with({ data });
-
-
       // Save to DB
       const record = await FormsXml.create({
         xml_base64: xmlBase64,
@@ -28,52 +35,27 @@ module.exports = {
     }
   },
   getXmlByFid: async function (req, res) {
-    const fid = req.params.fid;
+      const fid = req.params.fid;
   
-    if (!fid) return res.badRequest({ message: 'Missing FID' });
+      if (!fid) return res.badRequest({ message: 'Missing FID' });
   
-    const record = await FormsXml.findOne({ FID: fid });
-  
-    if (!record) return res.notFound({ message: 'No record for FID' });
-  
-    const rawXml = Buffer.from(record.xml_base64, 'base64').toString();
-  
-    if (req.query.format === 'xml') {
-      return res.type('application/xml').send(rawXml);
-    }
-  
-    return res.ok({
-      id: record.id,
-      fid: record.FID,
-      rawXml
-    });
+      try {
+        const result = await sails.helpers.xml.getXml.with({
+          fid: parseInt(fid),
+          format: req.query.format
+        });
+    
+        if (result.isXml) {
+          return res.type('application/xml').send(result.rawXml);
+        }
+    
+        return res.ok(result);
+      } catch (err) {
+        if (err.code === 'notFound') {
+          return res.notFound({ message: 'No record for FID' });
+        }
+    
+        return res.serverError({ error: 'Something went wrong', details: err.message });
+      }
   }
-  
-
-
-//   getXml: async function (req, res) {
-//     const id = req.params.id;
-
-//     if (!id) return res.badRequest({ message: 'Missing ID' });
-
-//     const record = await FormsXml.findOne({ id });
-
-//     if (!record) return res.notFound({ message: 'Record not found' });
-
-//     // Decode base64 back to raw XML
-//     const rawXml = Buffer.from(record.xml_base64, 'base64').toString();
-
-//     // Optional: return raw XML as browser-friendly
-//     if (req.query.format === 'xml') {
-//       return res.type('application/xml').send(rawXml);
-//     }
-
-//     return res.ok({
-//       id: record.id,
-//       reference: record.reference,
-//       form_type: record.form_type,
-//       rawXml,
-//       created_by: record.created_by
-//     });
-//   }
 };
