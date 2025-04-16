@@ -1,14 +1,34 @@
 const { create } = require('xmlbuilder2');
+const validateUccData = require('../../utils/validateUccData');
 
-function escapeXml(str) {
-  if (typeof str !== 'string') return '';
-  return str?.replace(/&/g, '&amp;')
-             .replace(/</g, '&lt;')
-             .replace(/>/g, '&gt;')
-             .replace(/"/g, '&quot;')
-             .replace(/'/g, '&apos;')
-             .replace(/[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD]/g, ''); 
-}
+  function escapeXml(str) {
+    if (typeof str !== 'string') return '';
+    return str?.replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;')
+              .replace(/'/g, '&apos;')
+              .replace(/[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD]/g, ''); 
+  }
+
+  function addNameElement(namesElement, nameData) {
+    if (nameData.orgName) {
+        namesElement.ele('OrganizationName').txt(escapeXml(nameData.orgName)).up();
+    }
+    if (nameData.individualName) {
+        const individualName = namesElement.ele('IndividualName');
+        individualName.ele('Surname').txt(escapeXml(nameData.individualName.surname)).up();
+        if (nameData.individualName.firstPersonalName) {
+            individualName.ele('FirstPersonalName').txt(escapeXml(nameData.individualName.firstPersonalName)).up();
+        }
+        if (nameData.individualName.additionalNamesInitials) {
+            individualName.ele('AdditionalNamesInitials').txt(escapeXml(nameData.individualName.additionalNamesInitials)).up();
+        }
+        if (nameData.individualName.suffix) {
+            individualName.ele('Suffix').txt(escapeXml(nameData.individualName.suffix)).up();
+        }
+    }
+  }
 
 module.exports = {
   friendlyName: 'Generate xml',
@@ -27,6 +47,10 @@ module.exports = {
 
   fn: async function (inputs, exits) {
     const data = inputs.data;
+    const errors = validateUccData(data);
+    if (errors.length > 0) {
+      return exits.success({ success: false, message: 'Validation failed.', errors, });
+    }
 
     const doc = create({ version: '1.0', encoding: 'UTF-8' })
       .ele('Document')
@@ -38,8 +62,9 @@ module.exports = {
 
     const filer = header.ele('Filer');
     const names = filer.ele('Names');
-    names.ele('OrganizationName').txt(escapeXml(data.filer.orgName)).up();
-    names.up();
+    
+     addNameElement(names, data.filer);
+     filer.up();
 
     filer.ele('MailAddress').txt(escapeXml(data.filer.mailAddress)).up();
     if (data.filer.mailAddress2) {
@@ -90,22 +115,12 @@ module.exports = {
 
     // === DEBTORS ===
     const debtor = record.ele('Debtors').ele('DebtorName').ele('Names');
-    debtor.ele('OrganizationName').txt(escapeXml(data.record.debtor.orgName)).up();
-    debtor.ele('MailAddress').txt(escapeXml(data.record.debtor.mailAddress)).up();
-    debtor.ele('City').txt(escapeXml(data.record.debtor.city)).up();
-    debtor.ele('State').txt(data.record.debtor.state).up();
-    debtor.ele('PostalCode').txt(data.record.debtor.postalCode).up();
-    debtor.ele('Country').txt(data.record.debtor.country).up();
+    addNameElement(debtor, data.record.debtor);
     debtor.up().up().up();
 
     // === SECURED PARTIES ===
     const secured = record.ele('SecuredParties').ele('SecuredName').ele('Names');
-    secured.ele('OrganizationName').txt(escapeXml(data.record.secured.orgName)).up();
-    secured.ele('MailAddress').txt(escapeXml(data.record.secured.mailAddress)).up();
-    secured.ele('City').txt(escapeXml(data.record.secured.city)).up();
-    secured.ele('State').txt(data.record.secured.state).up();
-    secured.ele('PostalCode').txt(data.record.secured.postalCode).up();
-    secured.ele('Country').txt(data.record.secured.country).up();
+    addNameElement(secured, data.record.secured);
     secured.up().up().up();
 
     // === COLLATERAL ===
@@ -115,7 +130,18 @@ module.exports = {
 
     // === DESIGNATION ===
     record.ele('CollateralDesignation').att('Type', 'NODesignation').up();
-
+    if (data.record.authorizingParty) {
+      const auth = record.ele('AuthorizingParty');
+      if (data.record.authorizingParty.type === 'secured') {
+        const authName = auth.ele('AuthSecuredParty').ele('Names');
+        addNameElement(authName, data.record.authorizingParty);
+        authName.up().up();
+      } else if (data.record.authorizingParty.type === 'debtor') {
+        const authName = auth.ele('AuthDebtor').ele('Names');
+        addNameElement(authName, data.record.authorizingParty);
+        authName.up().up();
+      }
+    }
     // === OUTPUT ===
     const xml = doc.end({ prettyPrint: true });
     const xmlSize = Buffer.byteLength(xml, 'utf8');
@@ -125,6 +151,7 @@ module.exports = {
     const xmlBase64 = Buffer.from(xml).toString('base64');
 
     return exits.success({
+      success:true,
       xml,
       xmlBase64
     });
