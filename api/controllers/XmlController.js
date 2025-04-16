@@ -20,6 +20,7 @@ module.exports = {
         FID: data.FID || 0,
         reference: data.record.filerRef,
         form_type: data.record.transType || 'UCC1',
+        ResultXML: xml,
         created_by: 1
       }).fetch();
 
